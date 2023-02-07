@@ -16609,10 +16609,10 @@
                   `\n- ` +
                   fails.map((fail) => `${group} > ${fail.title}`).join("\n- ");
               }
-              fullCommentBody += `\n\n<details>`;
-              fullCommentBody += `\n<summary>Expand output</summary>`;
-              fullCommentBody += `\n\n${resultMessage}`;
-              fullCommentBody += `\n</details>\n`;
+              //fullCommentBody += `\n\n<details>`;
+              //fullCommentBody += `\n<summary>Expand output</summary>`;
+              //fullCommentBody += `\n\n${resultMessage}`;
+              //fullCommentBody += `\n</details>\n`;
             }
           );
           // Close </details>
