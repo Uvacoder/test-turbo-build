@@ -16132,7 +16132,7 @@
           jobs === null || jobs === void 0
             ? void 0
             : jobs.filter((job) =>
-                /Next\.js integration test \([^)]*\)$/.test(job.name)
+                /Next\.js integration test \([^)]*\) \([^)]*\)$/.test(job.name)
               );
         console.log(
           jobs === null || jobs === void 0 ? void 0 : jobs.map((j) => j.name)
@@ -16165,7 +16165,9 @@
             return true;
           })
           .reduce((acc, { logs, nextjsVersion, job }) => {
-            testResultManifest.nextjsVersion = nextjsVersion;
+            if (!testResultManifest.nextjsVersion && nextjsVersion) {
+              testResultManifest.nextjsVersion = nextjsVersion;
+            }
             // Split logs per each test suites, exclude if it's arbitrary log does not contain test data
             const splittedLogs = logs
               .split("NEXT_INTEGRATION_TEST: true")
