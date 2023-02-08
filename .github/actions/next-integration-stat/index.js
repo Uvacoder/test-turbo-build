@@ -15906,11 +15906,10 @@
     const BOT_COMMENT_MARKER = `<!-- __marker__ next.js integration stats __marker__ -->`;
     // Header for the test report.
     const commentTitlePre = `## Failing next.js integration test suites`;
-    // Download logs for a job in a workflow run by reading redirect url from workflow log response.
-    function fetchJobLogsFromWorkflow(octokit, token, job) {
+    function findNextJsVersionFromBuildLogs(octokit, token, job) {
       var _a, _b;
       return __awaiter(this, void 0, void 0, function* () {
-        console.log("Checking test results for the job ", job.name);
+        console.log("Checking logs for the job ", job.name);
         // downloadJobLogsForWorkflowRun returns a redirect to the actual logs
         const jobLogRedirectResponse =
           yield octokit.rest.actions.downloadJobLogsForWorkflowRun(
@@ -15949,8 +15948,44 @@
           _b === void 0
             ? void 0
             : _b.trim();
+        console.log("Found Next.js version: ", nextjsVersion);
+        return nextjsVersion;
+      });
+    }
+    // Download logs for a job in a workflow run by reading redirect url from workflow log response.
+    function fetchJobLogsFromWorkflow(octokit, token, job) {
+      return __awaiter(this, void 0, void 0, function* () {
+        console.log("Checking test results for the job ", job.name);
+        // downloadJobLogsForWorkflowRun returns a redirect to the actual logs
+        const jobLogRedirectResponse =
+          yield octokit.rest.actions.downloadJobLogsForWorkflowRun(
+            Object.assign(
+              Object.assign(
+                { accept: "application/vnd.github+json" },
+                _actions_github__WEBPACK_IMPORTED_MODULE_0__.context.repo
+              ),
+              { job_id: job.id }
+            )
+          );
+        // fetch the actual logs
+        const jobLogsResponse = yield nodeFetch(jobLogRedirectResponse.url, {
+          headers: {
+            Authorization: `token ${token}`,
+          },
+        });
+        if (!jobLogsResponse.ok) {
+          throw new Error(
+            `Failed to get logsUrl, got status ${jobLogsResponse.status}`
+          );
+        }
+        // this should be the check_run's raw logs including each line
+        // prefixed with a timestamp in format 2020-03-02T18:42:30.8504261Z
+        const logText = yield jobLogsResponse.text();
+        const dateTimeStripped = logText
+          .split("\n")
+          .map((line) => line.substr("2020-03-02T19:39:16.8832288Z ".length));
         const logs = dateTimeStripped.join("\n");
-        return { nextjsVersion, logs, job };
+        return { logs, job };
       });
     }
     // Filter out logs that does not contain failed tests, then parse test results into json
@@ -16127,6 +16162,21 @@
             }
           )
         );
+        // Filter out next.js build setup jobs
+        const nextjsBuildSetupJob =
+          jobs === null || jobs === void 0
+            ? void 0
+            : jobs.find((job) =>
+                /Build Next.js for the turbopack integration test$/.test(
+                  job.name
+                )
+              );
+        // Next.js build setup jobs includes the version of next.js that is being tested, try to read it.
+        const nextjsVersion = yield findNextJsVersionFromBuildLogs(
+          octokit,
+          token,
+          nextjsBuildSetupJob
+        );
         // Filter out next.js integration test jobs
         const integrationTestJobs =
           jobs === null || jobs === void 0
@@ -16148,6 +16198,7 @@
           )
         );
         const testResultManifest = {
+          nextjsVersion,
           ref: sha,
         };
         const failedJobResults = fullJobLogsFromWorkflow
@@ -16164,10 +16215,7 @@
             }
             return true;
           })
-          .reduce((acc, { logs, nextjsVersion, job }) => {
-            if (!testResultManifest.nextjsVersion && nextjsVersion) {
-              testResultManifest.nextjsVersion = nextjsVersion;
-            }
+          .reduce((acc, { logs, job }) => {
             // Split logs per each test suites, exclude if it's arbitrary log does not contain test data
             const splittedLogs = logs
               .split("NEXT_INTEGRATION_TEST: true")

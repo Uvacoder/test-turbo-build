@@ -44,7 +44,7 @@ jobs:
             target/x86_64-unknown-linux-musl/release/next-dev
 
   build_nextjs:
-    name: Build Next.js
+    name: Build Next.js for the turbopack integration test
     runs-on: ubuntu-latest
     needs: [build_next_dev]
     env:
@@ -104,6 +104,10 @@ jobs:
           corepack disable
           pnpm install
           pnpm run build
+
+      - name: Check Next.js build version
+        run: |
+          ./next-dev --version
           # This is being used in github action to collect test results. Do not change it, or should update ./.github/actions/next-integration-test to match.
           echo "RUNNING NEXTJS VERSION: $(packages/next/dist/bin/next --version)"
 

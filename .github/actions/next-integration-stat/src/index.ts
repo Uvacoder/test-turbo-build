@@ -71,13 +71,12 @@ const BOT_COMMENT_MARKER = `<!-- __marker__ next.js integration stats __marker__
 // Header for the test report.
 const commentTitlePre = `## Failing next.js integration test suites`;
 
-// Download logs for a job in a workflow run by reading redirect url from workflow log response.
-async function fetchJobLogsFromWorkflow(
+async function findNextJsVersionFromBuildLogs(
   octokit: Octokit,
   token: string,
   job: Job
-): Promise<{ nextjsVersion: string; logs: string; job: Job }> {
-  console.log("Checking test results for the job ", job.name);
+): Promise<string> {
+  console.log("Checking logs for the job ", job.name);
 
   // downloadJobLogsForWorkflowRun returns a redirect to the actual logs
   const jobLogRedirectResponse =
@@ -112,9 +111,51 @@ async function fetchJobLogsFromWorkflow(
     ?.split("RUNNING NEXTJS VERSION:")
     .pop()
     ?.trim()!;
+
+  console.log("Found Next.js version: ", nextjsVersion);
+
+  return nextjsVersion;
+}
+
+// Download logs for a job in a workflow run by reading redirect url from workflow log response.
+async function fetchJobLogsFromWorkflow(
+  octokit: Octokit,
+  token: string,
+  job: Job
+): Promise<{ logs: string; job: Job }> {
+  console.log("Checking test results for the job ", job.name);
+
+  // downloadJobLogsForWorkflowRun returns a redirect to the actual logs
+  const jobLogRedirectResponse =
+    await octokit.rest.actions.downloadJobLogsForWorkflowRun({
+      accept: "application/vnd.github+json",
+      ...context.repo,
+      job_id: job.id,
+    });
+
+  // fetch the actual logs
+  const jobLogsResponse = await nodeFetch(jobLogRedirectResponse.url, {
+    headers: {
+      Authorization: `token ${token}`,
+    },
+  });
+
+  if (!jobLogsResponse.ok) {
+    throw new Error(
+      `Failed to get logsUrl, got status ${jobLogsResponse.status}`
+    );
+  }
+
+  // this should be the check_run's raw logs including each line
+  // prefixed with a timestamp in format 2020-03-02T18:42:30.8504261Z
+  const logText: string = await jobLogsResponse.text();
+  const dateTimeStripped = logText
+    .split("\n")
+    .map((line) => line.substr("2020-03-02T19:39:16.8832288Z ".length));
+
   const logs = dateTimeStripped.join("\n");
 
-  return { nextjsVersion, logs, job };
+  return { logs, job };
 }
 
 // Filter out logs that does not contain failed tests, then parse test results into json
@@ -240,6 +281,18 @@ async function getFailedJobResults(
     }
   );
 
+  // Filter out next.js build setup jobs
+  const nextjsBuildSetupJob = jobs?.find((job) =>
+    /Build Next.js for the turbopack integration test$/.test(job.name)
+  );
+
+  // Next.js build setup jobs includes the version of next.js that is being tested, try to read it.
+  const nextjsVersion = await findNextJsVersionFromBuildLogs(
+    octokit,
+    token,
+    nextjsBuildSetupJob
+  );
+
   // Filter out next.js integration test jobs
   const integrationTestJobs = jobs?.filter((job) =>
     /Next\.js integration test \([^)]*\) \([^)]*\)$/.test(job.name)
@@ -259,6 +312,7 @@ async function getFailedJobResults(
   );
 
   const testResultManifest: TestResultManifest = {
+    nextjsVersion,
     ref: sha,
   } as any;
 
@@ -273,11 +327,7 @@ async function getFailedJobResults(
       }
       return true;
     })
-    .reduce((acc, { logs, nextjsVersion, job }) => {
-      if (!testResultManifest.nextjsVersion && nextjsVersion) {
-        testResultManifest.nextjsVersion = nextjsVersion;
-      }
-
+    .reduce((acc, { logs, job }) => {
       // Split logs per each test suites, exclude if it's arbitrary log does not contain test data
       const splittedLogs = logs
         .split("NEXT_INTEGRATION_TEST: true")
