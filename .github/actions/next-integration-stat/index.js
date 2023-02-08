@@ -16105,11 +16105,13 @@
               { issue_number: prNumber }
             )
           );
-          // Get a comment from the bot if it exists
-          existingComment =
+          // Get a comment from the bot if it exists, delete all of them.
+          // Due to test report can exceed single comment size limit, it can be multiple comments and sync those is not trivial.
+          // Instead, we just delete all of them and post a new one.
+          const existingComments =
             comments === null || comments === void 0
               ? void 0
-              : comments.data.find((comment) => {
+              : comments.data.filter((comment) => {
                   var _a, _b;
                   return (
                     ((_a =
@@ -16126,6 +16128,24 @@
                       : _b.includes(BOT_COMMENT_MARKER))
                   );
                 });
+          if (
+            existingComments === null || existingComments === void 0
+              ? void 0
+              : existingComments.length
+          ) {
+            console.log("Found existing comments, deleting them");
+            for (const comment of existingComments) {
+              yield octokit.rest.issues.deleteComment(
+                Object.assign(
+                  Object.assign(
+                    {},
+                    _actions_github__WEBPACK_IMPORTED_MODULE_0__.context.repo
+                  ),
+                  { comment_id: comment.id }
+                )
+              );
+            }
+          }
         } else {
           (0, _actions_core__WEBPACK_IMPORTED_MODULE_1__.info)(
             "No PR number found in context, will not try to post comment."
@@ -16137,7 +16157,6 @@
           octokit,
           prNumber,
           sha,
-          existingComment,
         };
       });
     }
@@ -16545,17 +16564,44 @@
       }
       return ret;
     }
+    // Create a markdown formatted comment body for the PR
+    // with marker prefix to look for existing comment for the subsequent runs.
+    const createFormattedComment = (comment) => {
+      var _a;
+      return (
+        [
+          `${commentTitlePre} ${BOT_COMMENT_MARKER}`,
+          ...((_a = comment.header) !== null && _a !== void 0 ? _a : []),
+        ].join(`\n`) +
+        `\n\n` +
+        comment.contents.join(`\n`)
+      );
+    };
+    // Higher order fn to create a function that creates a comment on a PR
+    const createCommentPostAsync = (octokit, prNumber) => (body) =>
+      __awaiter(void 0, void 0, void 0, function* () {
+        if (!prNumber) {
+          console.log(
+            "This workflow run doesn't seem to be triggered via PR, there's no corresponding PR number. Skipping creating a comment."
+          );
+          return;
+        }
+        const result = yield octokit.rest.issues.createComment(
+          Object.assign(
+            Object.assign(
+              {},
+              _actions_github__WEBPACK_IMPORTED_MODULE_0__.context.repo
+            ),
+            { issue_number: prNumber, body }
+          )
+        );
+        console.log("Created a new comment", result.data.html_url);
+      });
     // An action report failed next.js integration test with --turbo
     function run() {
       return __awaiter(this, void 0, void 0, function* () {
-        const {
-          token,
-          octokit,
-          shouldDiffWithMain,
-          prNumber,
-          sha,
-          existingComment,
-        } = yield getInputs();
+        const { token, octokit, shouldDiffWithMain, prNumber, sha } =
+          yield getInputs();
         // determine if we want to report summary into slack channel.
         // As a first step, we'll only report summary when the test is run against release-to-release. (no main branch regressions yet)
         const shouldReportSlack =
@@ -16568,132 +16614,126 @@
           octokit,
           shouldDiffWithMain
         );
-        let fullCommentBody = "";
-        if (failedJobResults.result.length === 0) {
-          console.log("No failed test results found :tada:");
-          fullCommentBody =
-            `### Next.js test passes :green_circle: ${BOT_COMMENT_MARKER}` +
-            `\nCommit: ${sha}\n`;
-          return;
-        } else {
-          // Comment body to post test report with summary & full details.
-          fullCommentBody =
-            // Put the header title with marer comment to identify the comment for subsequent runs.
-            `${commentTitlePre} ${BOT_COMMENT_MARKER}` + `\nCommit: ${sha}\n`;
-          fullCommentBody += getTestSummary(
-            sha,
-            shouldDiffWithMain,
-            baseResults,
-            failedJobResults,
-            shouldReportSlack
+        const postCommentAsync = createCommentPostAsync(octokit, prNumber);
+        // Consturct a comment body to post test report with summary & full details.
+        const comments = failedJobResults.result.reduce((acc, value, idx) => {
+          var _a, _b, _c;
+          const { name: failedTest, data: testData } = value;
+          const commentValues = [];
+          // each job have nested array of test results
+          // Fill in each individual test suite failures
+          const groupedFails = {};
+          const testResult =
+            (_a = testData.testResults) === null || _a === void 0
+              ? void 0
+              : _a[0];
+          const resultMessage = stripAnsi(
+            testResult === null || testResult === void 0
+              ? void 0
+              : testResult.message
           );
-          // Append full test report to the comment body, with collapsed <details>
-          fullCommentBody += `\n<details>\n<summary>Full test report</summary>\n`;
-          // Iterate over job results to construct full test report
-          failedJobResults.result.forEach(
-            ({ job, name: failedTest, data: testData }) => {
-              var _a, _b, _c, _d, _e;
-              // each job have nested array of test results
-              // Fill in each individual test suite failures
-              const groupedFails = {};
-              const testResult =
-                (_a = testData.testResults) === null || _a === void 0
+          const failedAssertions =
+            (_b =
+              testResult === null || testResult === void 0
+                ? void 0
+                : testResult.assertionResults) === null || _b === void 0
+              ? void 0
+              : _b.filter((res) => res.status === "failed");
+          for (const fail of failedAssertions !== null &&
+          failedAssertions !== void 0
+            ? failedAssertions
+            : []) {
+            const ancestorKey =
+              (_c =
+                fail === null || fail === void 0
                   ? void 0
-                  : _a[0];
-              const resultMessage = stripAnsi(
-                testResult === null || testResult === void 0
-                  ? void 0
-                  : testResult.message
-              );
-              const failedAssertions =
-                (_b =
-                  testResult === null || testResult === void 0
-                    ? void 0
-                    : testResult.assertionResults) === null || _b === void 0
-                  ? void 0
-                  : _b.filter((res) => res.status === "failed");
-              for (const fail of failedAssertions !== null &&
-              failedAssertions !== void 0
-                ? failedAssertions
-                : []) {
-                const ancestorKey =
-                  (_c =
-                    fail === null || fail === void 0
-                      ? void 0
-                      : fail.ancestorTitles) === null || _c === void 0
-                    ? void 0
-                    : _c.join(" > ");
-                if (!groupedFails[ancestorKey]) {
-                  groupedFails[ancestorKey] = [];
-                }
-                groupedFails[ancestorKey].push(fail);
-              }
-              if (
-                (_d =
-                  existingComment === null || existingComment === void 0
-                    ? void 0
-                    : existingComment.body) === null || _d === void 0
-                  ? void 0
-                  : _d.includes(sha)
-              ) {
-                if (
-                  failedTest &&
-                  ((_e = existingComment.body) === null || _e === void 0
-                    ? void 0
-                    : _e.includes(failedTest))
-                ) {
-                  console.log(
-                    `Suite is already included in current comment on ${prNumber}`
-                  );
-                  // the check_suite comment already says this test failed
-                  return;
-                }
-                fullCommentBody = existingComment.body;
-              }
-              fullCommentBody += `\n\`${failedTest}\` `;
-              for (const group of Object.keys(groupedFails).sort()) {
-                const fails = groupedFails[group];
-                fullCommentBody +=
-                  `\n- ` +
-                  fails.map((fail) => `${group} > ${fail.title}`).join("\n- ");
-              }
-              fullCommentBody += `\n\n<details>`;
-              fullCommentBody += `\n<summary>Expand output</summary>`;
-              fullCommentBody += `\n\n${resultMessage}`;
-              fullCommentBody += `\n</details>\n`;
+                  : fail.ancestorTitles) === null || _c === void 0
+                ? void 0
+                : _c.join(" > ");
+            if (!groupedFails[ancestorKey]) {
+              groupedFails[ancestorKey] = [];
             }
-          );
-          // Close </details>
-          fullCommentBody += `</details>\n`;
-        }
+            groupedFails[ancestorKey].push(fail);
+          }
+          commentValues.push(`\`${failedTest}\``);
+          for (const group of Object.keys(groupedFails).sort()) {
+            const fails = groupedFails[group];
+            commentValues.push(`\n`);
+            fails.forEach((fail) => {
+              commentValues.push(`- ${group} > ${fail.title}`);
+            });
+          }
+          commentValues.push(`\n`);
+          commentValues.push(`<details>`);
+          commentValues.push(`<summary>Expand output</summary>`);
+          commentValues.push(resultMessage);
+          commentValues.push(`</details>`);
+          commentValues.push(`\n`);
+          // Check last comment body's length, append or either create new comment depends on the length of the text.
+          const commentIdxToUpdate = acc.length - 1;
+          if (
+            acc.length === 0 ||
+            commentValues.join(`\n`).length +
+              acc[commentIdxToUpdate].contents.join(`\n`).length >
+              60000
+          ) {
+            acc.push({
+              header: [`Commit: ${sha}`],
+              contents: commentValues,
+            });
+          } else {
+            acc[commentIdxToUpdate].contents.push(...commentValues);
+          }
+          return acc;
+        }, []);
+        const commentsWithSummary = [
+          // First comment is always a summary
+          {
+            header: [`Commit: ${sha}`],
+            contents: [
+              getTestSummary(
+                sha,
+                shouldDiffWithMain,
+                baseResults,
+                failedJobResults,
+                shouldReportSlack
+              ),
+            ],
+          },
+          ...comments,
+        ];
+        const isMultipleComments = comments.length > 1;
         try {
           if (!prNumber) {
             return;
           }
-          if (!existingComment) {
-            console.log("No existing comment found, creating a new one");
-            const result = yield octokit.rest.issues.createComment(
-              Object.assign(
-                Object.assign(
-                  {},
-                  _actions_github__WEBPACK_IMPORTED_MODULE_0__.context.repo
-                ),
-                { issue_number: prNumber, body: fullCommentBody }
-              )
+          if (failedJobResults.result.length === 0) {
+            console.log("No failed test results found :tada:");
+            yield postCommentAsync(
+              `### Next.js test passes :green_circle: ${BOT_COMMENT_MARKER}` +
+                `\nCommit: ${sha}\n`
             );
-            console.log("Created a new comment", result.data.html_url);
-          } else {
-            console.log("Existing comment found, updating it");
-            const result = yield octokit.rest.issues.updateComment(
-              Object.assign(
-                Object.assign(
-                  {},
-                  _actions_github__WEBPACK_IMPORTED_MODULE_0__.context.repo
-                ),
-                { comment_id: existingComment.id, body: fullCommentBody }
-              )
-            );
-            console.log("Updated existing comment", result.data.html_url);
+            return;
+          }
+          for (const [idx, comment] of commentsWithSummary.entries()) {
+            const value = Object.assign({}, comment);
+            if (isMultipleComments) {
+              value.header.push(
+                `**(Report ${idx + 1}/${commentsWithSummary.length})**`
+              );
+            }
+            // Add collapsible details for full test report
+            if (idx > 0) {
+              value.contents = [
+                `<details>`,
+                `<summary>Expand full test reports</summary>`,
+                `\n`,
+                ...value.contents,
+                `</details>`,
+              ];
+            }
+            const commentBodyText = createFormattedComment(value);
+            yield postCommentAsync(commentBodyText);
           }
         } catch (error) {
           console.error("Failed to post comment", error);
