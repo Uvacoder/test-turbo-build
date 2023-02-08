@@ -63,7 +63,7 @@ jobs:
           echo "RUNNING NEXTJS VERSION: $(packages/next/dist/bin/next --version)"
 
       - run: |
-          docker run --rm -v $(pwd):/work mcr.microsoft.com/playwright:v1.28.1-focal /bin/bash -c "cd /work && ls && curl https://install-node.vercel.app/v${{ matrix.node }} | FORCE=1 bash && node -v && npm i -g pnpm@${PNPM_VERSION} && /work/next-dev --display-version && __INTERNAL_CUSTOM_TURBOPACK_BINARY=${NEXT_DEV_BIN} __INTERNAL_NEXT_DEV_TEST_TURBO_GLOB_MATCH=${NEXT_DEV_TEST_GLOB} NEXT_TEST_JOB=1 NEXT_TEST_MODE=dev xvfb-run node run-tests.js --type development -g ${{ matrix.group }}/4 >> /proc/1/fd/1"
+          docker run --rm -v $(pwd):/work mcr.microsoft.com/playwright:v1.28.1-focal /bin/bash -c "cd /work && ls && curl https://install-node.vercel.app/v${{ matrix.node }} | FORCE=1 bash && node -v && npm i -g pnpm@${PNPM_VERSION} && /work/next-dev --display-version && __INTERNAL_CUSTOM_TURBOPACK_BINARY=${NEXT_DEV_BIN} __INTERNAL_NEXT_DEV_TEST_TURBO_GLOB_MATCH=${NEXT_DEV_TEST_GLOB} NEXT_TEST_CONTINUE_ON_ERROR=true NEXT_TEST_JOB=1 NEXT_TEST_MODE=dev xvfb-run node run-tests.js --type development -g ${{ matrix.group }}/4 >> /proc/1/fd/1"
         name: Run test/development
         # It is currently expected to fail some of next.js integration test, do not fail CI check.
         continue-on-error: true
@@ -109,7 +109,7 @@ jobs:
           echo "RUNNING NEXTJS VERSION: $(packages/next/dist/bin/next --version)"
 
       - run: |
-          docker run --rm -v $(pwd):/work mcr.microsoft.com/playwright:v1.28.1-focal /bin/bash -c "cd /work && ls && curl https://install-node.vercel.app/v${{ matrix.node }} | FORCE=1 bash && node -v && npm i -g pnpm@${PNPM_VERSION} && __INTERNAL_CUSTOM_TURBOPACK_BINARY=${NEXT_DEV_BIN} __INTERNAL_NEXT_DEV_TEST_TURBO_GLOB_MATCH=${NEXT_DEV_TEST_GLOB} NEXT_TEST_JOB=1 NEXT_TEST_MODE=dev xvfb-run node run-tests.js --type e2e -g ${{ matrix.group }}/7 >> /proc/1/fd/1"
+          docker run --rm -v $(pwd):/work mcr.microsoft.com/playwright:v1.28.1-focal /bin/bash -c "cd /work && ls && curl https://install-node.vercel.app/v${{ matrix.node }} | FORCE=1 bash && node -v && npm i -g pnpm@${PNPM_VERSION} && __INTERNAL_CUSTOM_TURBOPACK_BINARY=${NEXT_DEV_BIN} __INTERNAL_NEXT_DEV_TEST_TURBO_GLOB_MATCH=${NEXT_DEV_TEST_GLOB} NEXT_TEST_CONTINUE_ON_ERROR=true NEXT_TEST_JOB=1 NEXT_TEST_MODE=dev xvfb-run node run-tests.js --type e2e -g ${{ matrix.group }}/7 >> /proc/1/fd/1"
         name: Run test/e2e (dev)
         continue-on-error: true
         env:
@@ -153,7 +153,7 @@ jobs:
       # TODO: This test currently seems to load wasm/swc and does not load the next-dev binary.
       # Temporary disabled until figure out details.
       #- run: |
-      #    docker run --rm -v $(pwd):/work mcr.microsoft.com/playwright:v1.28.1-focal /bin/bash -c "cd /work && curl -s https://install-node.vercel.app/v16 | FORCE=1 bash && npm i -g pnpm@${PNPM_VERSION} > /dev/null && __INTERNAL_CUSTOM_TURBOPACK_BINARY=${NEXT_DEV_BIN} __INTERNAL_NEXT_DEV_TEST_TURBO_GLOB_MATCH=${NEXT_DEV_TEST_GLOB} NEXT_TEST_JOB=1 NEXT_TEST_CNA=1 xvfb-run node run-tests.js test/integration/create-next-app/index.test.ts test/integration/create-next-app/templates.test.ts >> /proc/1/fd/1"
+      #    docker run --rm -v $(pwd):/work mcr.microsoft.com/playwright:v1.28.1-focal /bin/bash -c "cd /work && curl -s https://install-node.vercel.app/v16 | FORCE=1 bash && npm i -g pnpm@${PNPM_VERSION} > /dev/null && __INTERNAL_CUSTOM_TURBOPACK_BINARY=${NEXT_DEV_BIN} __INTERNAL_NEXT_DEV_TEST_TURBO_GLOB_MATCH=${NEXT_DEV_TEST_GLOB} NEXT_TEST_CONTINUE_ON_ERROR=true NEXT_TEST_JOB=1 NEXT_TEST_CNA=1 xvfb-run node run-tests.js test/integration/create-next-app/index.test.ts test/integration/create-next-app/templates.test.ts >> /proc/1/fd/1"
       #  name: Run test/e2e (create-next-app)
       #  continue-on-error: true
       #  env:
@@ -226,7 +226,7 @@ jobs:
           echo "RUNNING NEXTJS VERSION: $(packages/next/dist/bin/next --version)"
 
       - run: |
-          docker run --rm -v $(pwd):/work mcr.microsoft.com/playwright:v1.28.1-focal /bin/bash -c "cd /work && ls && curl https://install-node.vercel.app/v16 | FORCE=1 bash && node -v && npm i -g pnpm@${PNPM_VERSION} && __INTERNAL_CUSTOM_TURBOPACK_BINARY=${NEXT_DEV_BIN} __INTERNAL_NEXT_DEV_TEST_TURBO_GLOB_MATCH=${NEXT_DEV_TEST_GLOB} NEXT_TEST_JOB=1 xvfb-run node run-tests.js -g ${{ matrix.group }}/25 >> /proc/1/fd/1"
+          docker run --rm -v $(pwd):/work mcr.microsoft.com/playwright:v1.28.1-focal /bin/bash -c "cd /work && ls && curl https://install-node.vercel.app/v16 | FORCE=1 bash && node -v && npm i -g pnpm@${PNPM_VERSION} && __INTERNAL_CUSTOM_TURBOPACK_BINARY=${NEXT_DEV_BIN} __INTERNAL_NEXT_DEV_TEST_TURBO_GLOB_MATCH=${NEXT_DEV_TEST_GLOB} NEXT_TEST_CONTINUE_ON_ERROR=true NEXT_TEST_JOB=1 xvfb-run node run-tests.js -g ${{ matrix.group }}/25 >> /proc/1/fd/1"
         name: Test Integration
         continue-on-error: true
         env:
